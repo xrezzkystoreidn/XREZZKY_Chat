@@ -1629,10 +1629,9 @@ async function filterPeople(v){
 
     if(stealthUsers?.length){
       // Tampilkan stealth user yang cocok kata kuncinya
-      const found = stealthUsers[0];
-      // Gabung sementara ke list tanpa mengubah allUsers
-      const presence = await sb.from('user_presence').select('is_online').eq('user_id',found.id).single();
-      found.is_online = presence?.data?.is_online || false;
+      const found = {...stealthUsers[0]};
+      const {data:presData} = await sb.from('user_presence').select('is_online').eq('user_id',found.id).single();
+      found.is_online = presData?.is_online || false;
 
       const el = document.getElementById('people-list');
       el.innerHTML = `
@@ -1675,25 +1674,29 @@ async function quickOpenChat(partnerId, partnerUsername, partnerEmail){
 //  CONVERSATIONS
 // ════════════════════════════════
 async function loadConvos(){
-  // Dengan model shared conversation, user bisa jadi owner atau partner
-  // Ambil semua conversation dimana ME terlibat
-  const {data:asOwner} = await sb.from('conversations')
-    .select('*, partner:partner_id(*)')
+  // Single query — ambil semua conversation dimana ME terlibat
+  // Dengan model shared (owner_id < partner_id), kita bisa jadi owner atau partner
+  const {data:ownerConvos} = await sb.from('conversations')
+    .select('*, partner:partner_id(id,username,email,bio,role,is_stealth)')
     .eq('owner_id', ME.id)
-    .order('updated_at', {ascending:false});
+    .order('updated_at',{ascending:false});
 
-  const {data:asPartner} = await sb.from('conversations')
-    .select('id, owner_id, partner_id, updated_at, partner:owner_id(*)')
+  const {data:partnerConvos} = await sb.from('conversations')
+    .select('*, owner:owner_id(id,username,email,bio,role,is_stealth)')
     .eq('partner_id', ME.id)
-    .order('updated_at', {ascending:false});
+    .order('updated_at',{ascending:false});
 
-  // Merge + deduplicate by id
-  const all = [...(asOwner||[]), ...(asPartner||[])];
+  // Normalisasi: semua punya field `partnerUser` yang konsisten
+  const normalized = [
+    ...(ownerConvos||[]).map(c => ({...c, partnerUser: c.partner})),
+    ...(partnerConvos||[]).map(c => ({...c, partnerUser: c.owner})),
+  ];
+
+  // Deduplicate by id + sort
   const seen = new Set();
-  convos = all.filter(c => {
+  convos = normalized.filter(c => {
     if(seen.has(c.id)) return false;
-    seen.add(c.id);
-    return true;
+    seen.add(c.id); return true;
   }).sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at));
 
   await renderConvoList(convos);
@@ -1736,12 +1739,10 @@ async function renderConvoList(list){
 
   let html = '';
   for(const c of list){
-    // Partner = siapapun yang bukan ME
-    const partner = c.owner_id === ME.id ? c.partner : c.partner;
-    // Fallback kalau join ga ada
+    const partner = c.partnerUser; // sudah dinormalisasi di loadConvos
     if(!partner) continue;
 
-    const partnerId = c.owner_id === ME.id ? c.partner_id : c.owner_id;
+    const partnerId = partner.id;
     const last = lastMsgMap[c.id];
     const u = unreadMap[c.id]||0;
     const isOnline = presMap[partnerId]||false;
@@ -1776,14 +1777,11 @@ async function renderConvoList(list){
 
 function subscribeConvos(){
   if(convoCh) sb.removeChannel(convoCh);
-  // Listen ke conversation dimana ME adalah owner ATAU partner
   convoCh = sb.channel('my-convos-'+ME.id)
     .on('postgres_changes',{event:'*',schema:'public',table:'conversations'},
       (payload) => {
         const c = payload.new || payload.old;
-        if(c?.owner_id === ME.id || c?.partner_id === ME.id){
-          loadConvos();
-        }
+        if(c?.owner_id===ME.id || c?.partner_id===ME.id) loadConvos();
       }
     ).subscribe();
 }
@@ -1857,8 +1855,9 @@ function buildMsgHTML(m){
 
   // Cek hapus untuk saya (localStorage)
   const deletedForMe = JSON.parse(localStorage.getItem('xrezzky_deleted_me_'+ME.id)||'[]');
-  if(deletedForMe.includes(m.id)) return ''; // sembunyikan
+  if(deletedForMe.includes(m.id)) return '';
 
+  // Definisi time SEKALI di sini — dipakai di seluruh fungsi
   const time = new Date(m.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
 
   // Pesan dihapus untuk semua
@@ -1874,7 +1873,7 @@ function buildMsgHTML(m){
     </div>`;
   }
 
-  const time = new Date(m.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+  // Sisanya normal — TIDAK ada const time lagi di bawah
   let replyHTML='';
   if(m.reply_to_id){ const orig=msgs.find(x=>x.id===m.reply_to_id); if(orig){ const prev=orig.media_url?(orig.media_type==='video'?'🎥 Video':'🖼️ Foto'):truncate(orig.text||'',60); replyHTML=`<div class="msg-reply-quote"><strong>${orig.sender_id===ME.id?'Kamu':esc(activePartner.username)}</strong>${esc(prev)}</div>`; } }
   const reactions=m.reactions||{};
