@@ -1564,172 +1564,158 @@ async function loadStoragePage(){
   el.innerHTML = `<div class="empty-state"><span class="spinner"></span><p style="margin-top:8px;">Memuat data storage...</p></div>`;
 
   try {
-    // ── SUPABASE STATS ──────────────────────────────────
+    // ── SUPABASE STATS ──
     const [
-      {count:totalMsgs},
-      {count:totalUsers},
-      {count:totalConvos},
-      {count:mediaMsgs},
-      {count:tempMsgs},
+      {count:totalMsgs},   {count:totalUsers},
+      {count:totalConvos}, {count:mediaMsgs},
+      {count:tempMsgs},    {count:totalGroups},
     ] = await Promise.all([
       sb.from('messages').select('*',{count:'exact',head:true}),
       sb.from('users').select('*',{count:'exact',head:true}),
       sb.from('conversations').select('*',{count:'exact',head:true}),
-      sb.from('messages').select('*',{count:'exact',head:true}).not('media_url','is',null),
-      sb.from('messages').select('*',{count:'exact',head:true}).not('media_expires_at','is',null),
+      sb.from('messages').select('*',{count:'exact',head:true}).not('media_url','is',null).is('deleted_at',null),
+      sb.from('messages').select('*',{count:'exact',head:true}).not('media_expires_at','is',null).is('deleted_at',null),
+      sb.from('groups').select('*',{count:'exact',head:true}).catch(()=>({count:0})),
     ]);
 
-    // ── CLOUDINARY USAGE (via API) ──────────────────────
-    let cloudUsage = null;
+    // ── CLOUDINARY USAGE via API ──
+    let cloud = null;
+    let cloudError = null;
     try {
-      // Generate signature untuk request usage
-      const ts = Math.round(Date.now()/1000);
-      const sigStr = `timestamp=${ts}${CLOUDINARY_SECRET}`;
-      const sigBuf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(sigStr));
-      const sig    = Array.from(new Uint8Array(sigBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+      // Cloudinary usage endpoint — POST dengan signature
+      const ts  = Math.round(Date.now()/1000);
+      const raw = `timestamp=${ts}${CLOUDINARY_SECRET}`;
+      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(raw));
+      const sig = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 
       const fd = new FormData();
       fd.append('timestamp', ts);
       fd.append('api_key',   CLOUDINARY_KEY);
       fd.append('signature', sig);
 
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/usage`, {
-        method: 'POST', body: fd
-      });
-      if(res.ok) cloudUsage = await res.json();
-    } catch(e) {
-      console.warn('Cloudinary usage fetch error:', e);
-    }
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/usage`,{method:'POST',body:fd});
+      if(res.ok) cloud = await res.json();
+      else cloudError = `HTTP ${res.status}`;
+    } catch(e) { cloudError = e.message; }
 
-    // ── RENDER ──────────────────────────────────────────
-    let storageUsedMB  = 0;
-    let bandwidthUsedMB = 0;
-    let totalResources  = 0;
-    let transformations = 0;
+    // ── PARSE CLOUDINARY DATA ──
+    const MB = 1024*1024;
+    const storUsed  = cloud ? Math.round((cloud.storage?.usage||0)/MB) : null;
+    const storLimit = 25*1024; // 25 GB free plan
+    const bwUsed    = cloud ? Math.round((cloud.bandwidth?.usage||0)/MB) : null;
+    const bwLimit   = 25*1024;
+    const resources = cloud?.resources?.usage || 0;
+    const transforms= cloud?.transformations?.usage || 0;
+    const objsLimit = cloud?.objects?.limit || 25000;
+    const objsUsed  = cloud?.objects?.usage || 0;
 
-    if(cloudUsage){
-      storageUsedMB   = Math.round((cloudUsage.storage?.usage  || 0) / (1024*1024));
-      bandwidthUsedMB = Math.round((cloudUsage.bandwidth?.usage || 0) / (1024*1024));
-      totalResources  = cloudUsage.resources?.usage || 0;
-      transformations = cloudUsage.transformations?.usage || 0;
-    }
+    const storPct   = storUsed  !== null ? Math.min((storUsed/storLimit)*100,100).toFixed(1) : null;
+    const bwPct     = bwUsed    !== null ? Math.min((bwUsed/bwLimit)*100,100).toFixed(1) : null;
+    const objPct    = Math.min((objsUsed/objsLimit)*100,100).toFixed(1);
 
-    const storPct = Math.min((storageUsedMB / CLOUD_STORAGE_LIMIT)*100, 100).toFixed(1);
-    const bwPct   = Math.min((bandwidthUsedMB / CLOUD_BW_LIMIT)*100, 100).toFixed(1);
-
-    const storColor  = storPct > 80 ? 'var(--red)' : storPct > 50 ? 'var(--yellow)' : 'var(--green)';
-    const bwColor    = bwPct   > 80 ? 'var(--red)' : bwPct   > 50 ? 'var(--yellow)' : 'var(--accent)';
+    const colorOf = pct => pct > 80 ? '#ef4444' : pct > 50 ? '#f59e0b' : '#22c55e';
+    const barOf   = (used,limit,pct,color,label,unitLabel) => `
+      <div class="storage-progress-wrap">
+        <div class="storage-progress-label">
+          <span class="storage-progress-name">${label}</span>
+          <span class="storage-progress-val">${used !== null ? `${used} / ${limit} ${unitLabel} (${pct}%)` : 'Tidak tersedia'}</span>
+        </div>
+        <div class="storage-progress-track">
+          <div class="storage-progress-fill" style="width:${pct||0}%;background:${color};"></div>
+        </div>
+        ${pct > 80 ? `<div style="font-size:10px;color:#ef4444;margin-top:3px;">⚠️ Hampir penuh! Pertimbangkan upgrade.</div>` : ''}
+      </div>`;
 
     el.innerHTML = `
     <!-- CLOUDINARY -->
     <div class="storage-card">
       <div class="storage-card-header">
         <div class="storage-card-icon" style="background:rgba(59,130,246,.15);">☁️</div>
-        <div>
+        <div style="flex:1;">
           <div class="storage-card-title">Cloudinary</div>
-          <div class="storage-card-sub">Media storage & bandwidth • Free Plan</div>
+          <div class="storage-card-sub">Media storage • Free Plan (25 GB)</div>
         </div>
+        <span style="font-size:10px;padding:3px 8px;border-radius:99px;font-weight:700;${cloud?'background:rgba(34,197,94,.15);color:var(--green);':'background:rgba(245,158,11,.15);color:var(--yellow);'}">
+          ${cloud ? '🟢 Live' : '🟡 Estimasi'}
+        </span>
       </div>
 
+      ${cloudError ? `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:10px 14px;font-size:11px;color:#fbbf24;margin-bottom:14px;">
+        ⚠️ Gagal fetch data Cloudinary real-time (${cloudError}). Data di bawah adalah estimasi dari database.
+      </div>` : ''}
+
+      <!-- Stats grid -->
       <div class="storage-stat-row">
         <div class="storage-stat-item">
-          <strong style="color:${storColor};">${storageUsedMB} MB</strong>
+          <strong style="color:${colorOf(storPct||0)};">${storUsed !== null ? storUsed+' MB' : '—'}</strong>
           <span>Storage terpakai</span>
         </div>
         <div class="storage-stat-item">
-          <strong>${CLOUD_STORAGE_LIMIT} MB</strong>
-          <span>Limit storage</span>
-        </div>
-        <div class="storage-stat-item">
-          <strong style="color:${storColor};">${(CLOUD_STORAGE_LIMIT - storageUsedMB)} MB</strong>
+          <strong style="color:#22c55e;">${storUsed !== null ? (storLimit-storUsed)+' MB' : '—'}</strong>
           <span>Tersisa</span>
         </div>
-      </div>
-
-      <!-- Storage bar -->
-      <div class="storage-progress-wrap">
-        <div class="storage-progress-label">
-          <span class="storage-progress-name">📦 Storage</span>
-          <span class="storage-progress-val">${storageUsedMB} / ${CLOUD_STORAGE_LIMIT} MB (${storPct}%)</span>
-        </div>
-        <div class="storage-progress-track">
-          <div class="storage-progress-fill" style="width:${storPct}%;background:${storColor};"></div>
-        </div>
-      </div>
-
-      <!-- Bandwidth bar -->
-      <div class="storage-progress-wrap">
-        <div class="storage-progress-label">
-          <span class="storage-progress-name">🌐 Bandwidth bulan ini</span>
-          <span class="storage-progress-val">${bandwidthUsedMB} / ${CLOUD_BW_LIMIT} MB (${bwPct}%)</span>
-        </div>
-        <div class="storage-progress-track">
-          <div class="storage-progress-fill" style="width:${bwPct}%;background:${bwColor};"></div>
-        </div>
-      </div>
-
-      <div class="storage-stat-row">
         <div class="storage-stat-item">
-          <strong>${totalResources.toLocaleString()}</strong>
+          <strong>${storLimit} MB</strong>
+          <span>Total limit</span>
+        </div>
+        <div class="storage-stat-item">
+          <strong style="color:#60a5fa;">${resources.toLocaleString()}</strong>
           <span>Total file</span>
         </div>
+      </div>
+
+      <!-- Progress bars -->
+      ${barOf(storUsed, storLimit, storPct, colorOf(storPct||0), '📦 Storage', 'MB')}
+      ${barOf(bwUsed, bwLimit, bwPct, colorOf(bwPct||0), '🌐 Bandwidth Bulan Ini', 'MB')}
+      ${barOf(objsUsed, objsLimit, objPct, colorOf(objPct), '📁 Jumlah File', 'files')}
+
+      <!-- Extra stats -->
+      <div class="storage-stat-row" style="margin-top:10px;">
         <div class="storage-stat-item">
-          <strong>${transformations.toLocaleString()}</strong>
+          <strong style="color:#f59e0b;">${tempMsgs||0}</strong>
+          <span>File temp (24j)</span>
+        </div>
+        <div class="storage-stat-item">
+          <strong>${transforms.toLocaleString()}</strong>
           <span>Transformasi</span>
         </div>
         <div class="storage-stat-item">
-          <strong style="color:var(--yellow);">${tempMsgs||0}</strong>
-          <span>File temp (24j)</span>
+          <strong style="color:#a78bfa;">${mediaMsgs||0}</strong>
+          <span>Pesan media</span>
         </div>
       </div>
 
-      ${cloudUsage ? '' : `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:10px 14px;font-size:11px;color:#fbbf24;margin-bottom:12px;">
-        ⚠️ Tidak bisa mengambil data Cloudinary real-time. Data di atas adalah estimasi dari database.
-      </div>`}
-
       <div class="storage-actions">
-        <button class="btn btn-warning btn-sm" onclick="clearExpiredMediaNow()">
-          <i class="fa fa-clock-rotate-left"></i> Clear Media Expired Sekarang
+        <button class="btn btn-success btn-sm" onclick="clearExpiredMediaNow()">
+          <i class="fa fa-clock-rotate-left"></i> Clear Expired Sekarang
+        </button>
+        <button class="btn btn-warning btn-sm" onclick="loadStoragePage()">
+          <i class="fa fa-rotate-right"></i> Refresh Data
         </button>
         <button class="btn btn-danger btn-sm" onclick="openClearCloudinary()">
-          <i class="fa fa-trash"></i> Clear SEMUA Media Temp
+          <i class="fa fa-trash"></i> Clear Semua Media Temp
         </button>
       </div>
     </div>
 
-    <!-- SUPABASE DB -->
+    <!-- SUPABASE -->
     <div class="storage-card">
       <div class="storage-card-header">
         <div class="storage-card-icon" style="background:rgba(34,197,94,.15);">🗄️</div>
         <div>
           <div class="storage-card-title">Supabase Database</div>
-          <div class="storage-card-sub">PostgreSQL • Free Plan (500 MB limit)</div>
+          <div class="storage-card-sub">PostgreSQL • Free Plan (500 MB)</div>
         </div>
       </div>
-
       <div class="storage-stat-row">
-        <div class="storage-stat-item">
-          <strong style="color:var(--accent);">${totalUsers||0}</strong>
-          <span>Total user</span>
-        </div>
-        <div class="storage-stat-item">
-          <strong style="color:var(--purple);">${totalMsgs||0}</strong>
-          <span>Total pesan</span>
-        </div>
-        <div class="storage-stat-item">
-          <strong style="color:var(--yellow);">${totalConvos||0}</strong>
-          <span>Percakapan</span>
-        </div>
-        <div class="storage-stat-item">
-          <strong style="color:var(--green);">${mediaMsgs||0}</strong>
-          <span>Pesan media</span>
-        </div>
+        <div class="storage-stat-item"><strong style="color:var(--accent);">${totalUsers||0}</strong><span>User</span></div>
+        <div class="storage-stat-item"><strong style="color:#a78bfa;">${totalMsgs||0}</strong><span>Pesan</span></div>
+        <div class="storage-stat-item"><strong style="color:#f59e0b;">${totalConvos||0}</strong><span>Chat</span></div>
+        <div class="storage-stat-item"><strong style="color:#22c55e;">${totalGroups||0}</strong><span>Grup</span></div>
       </div>
-
       <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.15);border-radius:10px;padding:12px 14px;font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.7;">
-        💡 Untuk melihat ukuran DB yang akurat, buka <b>Supabase Dashboard → Settings → Database → Database size</b>
+        💡 Ukuran DB akurat: <b>Supabase Dashboard → Settings → Database → Database size</b>
       </div>
-
       <div class="storage-actions">
         <button class="btn btn-danger btn-sm" onclick="openClearMessages()">
           <i class="fa fa-comments"></i> Clear Semua Pesan
@@ -1739,8 +1725,6 @@ async function loadStoragePage(){
         </button>
       </div>
     </div>
-
-    <!-- LAST CLEANUP -->
     <div style="font-size:11px;color:var(--text3);text-align:center;padding:8px;">
       🕑 Auto cleanup expired media: setiap hari jam 02.00 WIB
     </div>`;
@@ -1750,10 +1734,7 @@ async function loadStoragePage(){
   }
 }
 
-// ── CLEAR ACTIONS (semua butuh konfirmasi email) ──────────────
-
-let _pendingStorageAction = null;
-
+    
 function openClearCloudinary(){
   openConfirmEmail(
     '🗑️ Hapus Semua Media Temp?',
@@ -1814,10 +1795,6 @@ async function clearExpiredMediaNow(){
 // ══════════════════════════════════════
 //  OTP SYSTEM
 // ══════════════════════════════════════
-let _pendingStorageAction = null;
-let _otpCode              = null;
-let _otpTimer             = null;
-let _otpExpiry            = null;
 
 function openConfirmEmail(title, sub, callback){
   // Ganti ke OTP system
