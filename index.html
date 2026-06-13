@@ -586,7 +586,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(-
           </div>
         </div>
         <div class="sidebar-actions">
-          <div class="icon-btn" id="admin-panel-btn" onclick="openAdminPanel()" title="Admin Panel" style="display:none;background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.3);">
+          <div class="icon-btn" id="admin-panel-btn" onclick="goToAdminPanel()" title="Admin Panel" style="display:none;background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.3);">
             <i class="fa fa-shield-halved" style="color:var(--accent);"></i>
           </div>
           <div class="icon-btn" onclick="openNewChat()" title="Chat Baru"><i class="fa fa-pen-to-square"></i></div>
@@ -748,51 +748,6 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(-
   </div>
 </div>
 
-<!-- ADMIN PANEL MODAL -->
-<div class="modal-overlay" id="modal-admin" onclick="if(event.target===this)closeAdminPanel()" style="align-items:stretch;">
-  <div style="width:100%;max-width:520px;background:var(--bg2);display:flex;flex-direction:column;height:100dvh;border-right:1px solid var(--border2);animation:slideUp .25s ease;">
-    <!-- Header -->
-    <div style="padding:calc(var(--safe-top)+14px) 18px 0;border-bottom:1px solid var(--border);flex-shrink:0;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <i class="fa fa-shield-halved" style="color:var(--accent);font-size:18px;"></i>
-          <span style="font-size:17px;font-weight:900;">Admin Panel</span>
-          <span id="admin-role-label" style="font-size:10px;"></span>
-        </div>
-        <div class="icon-btn" onclick="closeAdminPanel()"><i class="fa fa-xmark"></i></div>
-      </div>
-      <!-- Stats bar -->
-      <div style="display:flex;gap:0;margin-bottom:12px;">
-        <div style="flex:1;text-align:center;padding:8px 0;">
-          <div id="stat-users" style="font-size:20px;font-weight:900;">-</div>
-          <div style="font-size:10px;color:var(--text3);">User</div>
-        </div>
-        <div style="flex:1;text-align:center;padding:8px 0;border-left:1px solid var(--border);">
-          <div id="stat-msgs" style="font-size:20px;font-weight:900;">-</div>
-          <div style="font-size:10px;color:var(--text3);">Pesan</div>
-        </div>
-        <div style="flex:1;text-align:center;padding:8px 0;border-left:1px solid var(--border);">
-          <div id="stat-reports" style="font-size:20px;font-weight:900;color:var(--red);">-</div>
-          <div style="font-size:10px;color:var(--text3);">Laporan</div>
-        </div>
-        <div style="flex:1;text-align:center;padding:8px 0;border-left:1px solid var(--border);">
-          <div id="stat-online" style="font-size:20px;font-weight:900;color:var(--green);">-</div>
-          <div style="font-size:10px;color:var(--text3);">Online</div>
-        </div>
-      </div>
-      <!-- Tabs -->
-      <div style="display:flex;gap:4px;padding-bottom:0;">
-        <button class="sidebar-tab active" id="atab-reports" onclick="switchAdminTab('reports')" style="flex:1;">🚨 Laporan</button>
-        <button class="sidebar-tab" id="atab-users" onclick="switchAdminTab('users')" style="flex:1;">👥 User</button>
-        <button class="sidebar-tab" id="atab-bans" onclick="switchAdminTab('bans')" style="flex:1;">🚫 Ban</button>
-      </div>
-    </div>
-    <!-- Content -->
-    <div style="flex:1;overflow-y:auto;" id="admin-content">
-      <div style="padding:40px 20px;text-align:center;color:var(--text3);"><span class="spinner"></span></div>
-    </div>
-  </div>
-</div>
 
 <!-- USER PROFILE MODAL -->
 <div class="profile-modal-overlay" id="modal-user-profile" onclick="if(event.target===this)closeUserProfile()">
@@ -2680,168 +2635,11 @@ async function startChat(partnerId,partnerUsername,partnerEmail){
 // ════════════════════════════════
 //  PROFILE
 // ════════════════════════════════
-// ════════════════════════════════
-//  ADMIN PANEL
-// ════════════════════════════════
-let _adminTab = 'reports';
 
-function openAdminPanel(){
-  if(myRole!=='owner'&&myRole!=='admin'){ showToast('Akses ditolak.'); return; }
-  document.getElementById('modal-admin').classList.add('open');
-  document.getElementById('admin-role-label').innerHTML = getRoleBadgeHTML(myRole);
-  loadAdminStats();
-  switchAdminTab('reports');
-}
-
-function closeAdminPanel(){
-  document.getElementById('modal-admin').classList.remove('open');
-}
-
-function switchAdminTab(tab){
-  _adminTab = tab;
-  ['reports','users','bans'].forEach(t=>{
-    document.getElementById('atab-'+t).classList.toggle('active', t===tab);
-  });
-  if(tab==='reports') loadAdminReports();
-  else if(tab==='users') loadAdminUsers();
-  else if(tab==='bans') loadAdminBans();
-}
-
-async function loadAdminStats(){
-  const [
-    {count:totalUsers},
-    {count:totalMsgs},
-    {count:pendingReports},
-    {count:onlineUsers}
-  ] = await Promise.all([
-    sb.from('users').select('*',{count:'exact',head:true}),
-    sb.from('messages').select('*',{count:'exact',head:true}),
-    sb.from('reports').select('*',{count:'exact',head:true}).eq('status','pending'),
-    sb.from('user_presence').select('*',{count:'exact',head:true}).eq('is_online',true),
-  ]);
-  document.getElementById('stat-users').innerText   = totalUsers||0;
-  document.getElementById('stat-msgs').innerText    = totalMsgs||0;
-  document.getElementById('stat-reports').innerText = pendingReports||0;
-  document.getElementById('stat-online').innerText  = onlineUsers||0;
-}
-
-async function loadAdminReports(){
-  const el = document.getElementById('admin-content');
-  el.innerHTML = `<div style="padding:30px;text-align:center;"><span class="spinner"></span></div>`;
-  const {data:reports} = await sb.from('reports')
-    .select('*, reporter:reporter_id(username), reported:reported_id(username,email)')
-    .order('created_at',{ascending:false}).limit(50);
-  if(!reports?.length){
-    el.innerHTML=`<div class="convo-empty" style="padding:60px 20px;"><i class="fa fa-check-circle" style="color:var(--green);font-size:36px;opacity:.6;"></i><p>Tidak ada laporan masuk</p></div>`;
-    return;
-  }
-  const sColor={pending:'#f59e0b',reviewed:'#60a5fa',resolved:'#22c55e',dismissed:'#475569'};
-  const sLabel={pending:'Menunggu',reviewed:'Ditinjau',resolved:'Selesai',dismissed:'Diabaikan'};
-  el.innerHTML = reports.map(r=>`
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border);">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-        <div style="font-size:13px;font-weight:700;">
-          <span style="color:var(--text3);">@${esc(r.reporter?.username||'?')}</span>
-          <span style="color:var(--text3);margin:0 4px;">→</span>
-          <span style="color:var(--red);">@${esc(r.reported?.username||'?')}</span>
-        </div>
-        <span style="font-size:10px;font-weight:700;color:${sColor[r.status]};background:${sColor[r.status]}22;padding:2px 8px;border-radius:99px;">${sLabel[r.status]}</span>
-      </div>
-      <div style="font-size:12px;color:var(--accent);font-weight:700;margin-bottom:2px;">${esc(r.reason)}</div>
-      ${r.detail?`<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${esc(r.detail)}</div>`:''}
-      <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">${fmtTime(r.created_at)}</div>
-      ${r.status==='pending'?`
-      <div style="display:flex;gap:8px;">
-        <button onclick="resolveReport('${r.id}','resolved')" style="flex:1;padding:7px;border-radius:8px;background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.25);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;"><i class="fa fa-check"></i> Selesaikan</button>
-        <button onclick="banUserFromReport('${r.reported_id}','${esc(r.reported?.username||'?')}')" style="flex:1;padding:7px;border-radius:8px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;"><i class="fa fa-ban"></i> Ban User</button>
-        <button onclick="resolveReport('${r.id}','dismissed')" style="padding:7px 12px;border-radius:8px;background:var(--surface2);color:var(--text3);border:1px solid var(--border);font-size:11px;cursor:pointer;font-family:inherit;">Abaikan</button>
-      </div>`:''}
-    </div>`).join('');
-}
-
-async function loadAdminUsers(){
-  const el = document.getElementById('admin-content');
-  el.innerHTML = `<div style="padding:30px;text-align:center;"><span class="spinner"></span></div>`;
-  const {data:users} = await sb.from('users').select('*, presence:user_presence(is_online)').order('created_at',{ascending:false});
-  if(!users?.length){ el.innerHTML=`<div class="convo-empty" style="padding:60px 20px;"><i class="fa fa-users"></i><p>Belum ada user</p></div>`; return; }
-  el.innerHTML = users.map(u=>{
-    const isOnline = u.presence?.is_online||false;
-    return `
-    <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border);">
-      <div style="position:relative;flex-shrink:0;">
-        <img src="${avatarUrl(u.username)}" style="width:40px;height:40px;border-radius:50%;border:2px solid var(--border2);">
-        ${isOnline?`<div style="position:absolute;bottom:0;right:0;width:10px;height:10px;background:var(--green);border-radius:50%;border:2px solid var(--bg2);"></div>`:''}
-      </div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span style="font-size:13px;font-weight:700;">@${esc(u.username)}</span>
-          ${getRoleBadgeHTML(u.role)}
-        </div>
-        <div style="font-size:11px;color:var(--text3);">${esc(u.email)}</div>
-      </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;">
-        ${u.id!==ME.id&&u.role!=='owner'?`
-          <button onclick="banUserAdmin('${u.id}','${esc(u.username)}')" title="Ban" style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--red);cursor:pointer;font-size:12px;"><i class="fa fa-ban"></i></button>
-          ${myRole==='owner'&&u.role==='user'?`<button onclick="promoteToAdmin('${u.id}','${esc(u.username)}')" title="Jadikan Admin" style="width:32px;height:32px;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:var(--accent);cursor:pointer;font-size:12px;"><i class="fa fa-shield-halved"></i></button>`:''}
-        `:'<span style="font-size:10px;color:var(--text3);">—</span>'}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-async function loadAdminBans(){
-  const el = document.getElementById('admin-content');
-  el.innerHTML = `<div style="padding:30px;text-align:center;"><span class="spinner"></span></div>`;
-  const {data:bans} = await sb.from('bans').select('*, user:user_id(username,email), banner:banned_by(username)').order('created_at',{ascending:false});
-  if(!bans?.length){ el.innerHTML=`<div class="convo-empty" style="padding:60px 20px;"><i class="fa fa-check-circle" style="color:var(--green);font-size:36px;opacity:.6;"></i><p>Tidak ada user di-ban</p></div>`; return; }
-  el.innerHTML = bans.map(b=>`
-    <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border);">
-      <img src="${avatarUrl(b.user?.username)}" style="width:40px;height:40px;border-radius:50%;border:2px solid rgba(239,68,68,.3);flex-shrink:0;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:700;color:#fca5a5;">@${esc(b.user?.username||'?')}</div>
-        <div style="font-size:11px;color:var(--text3);">${esc(b.reason||'-')} · oleh @${esc(b.banner?.username||'?')}</div>
-        <div style="font-size:10px;color:var(--text3);">${fmtTime(b.created_at)}</div>
-      </div>
-      <button onclick="unbanUser('${b.user_id}','${esc(b.user?.username||'?')}')" style="padding:6px 12px;border-radius:8px;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;"><i class="fa fa-unlock"></i> Unban</button>
-    </div>`).join('');
-}
-
-async function resolveReport(reportId, status){
-  await sb.from('reports').update({status, reviewed_by:ME.id, reviewed_at:new Date().toISOString()}).eq('id',reportId);
-  showToast(status==='resolved'?'✅ Laporan diselesaikan.':'Laporan diabaikan.');
-  loadAdminReports(); loadAdminStats();
-}
-
-async function banUserFromReport(userId, username){
-  await banUserAdmin(userId, username);
-  await sb.from('reports').update({status:'resolved',reviewed_by:ME.id,reviewed_at:new Date().toISOString(),admin_note:'User di-ban'}).eq('reported_id',userId).eq('status','pending');
-  loadAdminReports(); loadAdminStats();
-}
-
-async function banUserAdmin(userId, username){
-  if(userId===ME.id) return showToast('Tidak bisa ban diri sendiri.');
-  const reason = prompt(`Alasan ban @${username}:`,'Melanggar aturan');
-  if(reason===null) return;
-  const {error} = await sb.from('bans').upsert({user_id:userId,banned_by:ME.id,reason},{onConflict:'user_id'});
-  if(error) return showToast('Gagal ban: '+error.message);
-  showToast(`@${username} di-ban.`);
-  loadAdminUsers(); loadAdminStats();
-}
-
-async function unbanUser(userId, username){
-  if(!confirm(`Cabut ban @${username}?`)) return;
-  await sb.from('bans').delete().eq('user_id',userId);
-  showToast(`@${username} di-unban.`);
-  loadAdminBans(); loadAdminStats();
-}
-
-async function promoteToAdmin(userId, username){
-  if(myRole!=='owner') return showToast('Hanya owner yang bisa promote admin.');
-  if(!confirm(`Jadikan @${username} sebagai Admin?`)) return;
-  const {error} = await sb.from('users').update({role:'admin'}).eq('id',userId);
-  if(error) return showToast('Gagal: '+error.message);
-  showToast(`@${username} sekarang Admin 🛡️`);
-  loadAdminUsers();
+function goToAdminPanel(){
+  // Buka admin.html di tab baru
+  const base = window.location.href.replace(/\/[^/]*(\?.*)?$/, '');
+  window.open(base + '/admin.html', '_blank');
 }
 
 function openProfileDrawer(){ document.getElementById('profile-drawer').classList.add('open'); updateSidebarUI(); }
