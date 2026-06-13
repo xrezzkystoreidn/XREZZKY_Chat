@@ -3691,10 +3691,12 @@ async function sendSignal(type, payload, toId){
 function subscribeCallSignals(roomId){
   if(callSignalCh) sb.removeChannel(callSignalCh);
   callSignalCh = sb.channel('call-'+roomId)
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals',filter:`room_id=eq.${roomId}`},
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals'},
       async payload => {
         const sig = payload.new;
-        if(sig.from_id === ME.id) return; // skip pesan dari diri sendiri
+        // Filter: hanya signal untuk room ini dan bukan dari kita sendiri
+        if(sig.room_id !== roomId) return;
+        if(sig.from_id === ME.id) return;
 
         switch(sig.type){
           case 'answer':
@@ -3704,23 +3706,19 @@ function subscribeCallSignals(roomId){
               document.getElementById('call-avatar').className = 'call-avatar';
             }
             break;
-
           case 'ice':
-            if(pc && sig.payload.candidate){
+            if(pc && sig.payload?.candidate){
               try { await pc.addIceCandidate(new RTCIceCandidate(sig.payload.candidate)); } catch(e){}
             }
             break;
-
           case 'accept':
             document.getElementById('call-status').innerText = 'Tersambung';
             document.getElementById('call-avatar').className = 'call-avatar';
             break;
-
           case 'reject':
             showToast('❌ Panggilan ditolak.');
             endCall();
             break;
-
           case 'end':
             showToast('📵 Panggilan diakhiri.');
             endCall();
@@ -3732,29 +3730,32 @@ function subscribeCallSignals(roomId){
 
 // ── SUBSCRIBE INCOMING CALLS (global, saat app init) ──
 function subscribeIncomingCalls(){
+  // Supabase realtime postgres_changes tidak support filter by UUID column
+  // Subscribe ke semua INSERT di call_signals, filter manual di JS
   const ch = sb.channel('incoming-calls-'+ME.id)
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals',filter:`to_id=eq.${ME.id}`},
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals'},
       async payload => {
         const sig = payload.new;
-        if(sig.type !== 'call') return;     // hanya notif panggilan masuk
-        if(isCallActive) {
-          // Sudah ada call aktif — tolak otomatis
-          await sendSignal('reject', {reason:'busy'}, sig.from_id);
+
+        // Filter manual — hanya proses kalau ditujukan ke kita
+        if(sig.to_id !== ME.id) return;
+        if(sig.type !== 'call') return;
+
+        if(isCallActive){
+          await sendSignal('reject',{reason:'busy'},sig.from_id);
           return;
         }
 
-        // Simpan offer untuk dipakai saat accept
         _incomingFrom = sig.from_id;
+        const rId     = makeRoomId(ME.id, sig.from_id);
+        callRoomId    = rId;
 
-        // Subscribe ke room untuk dapat offer
-        const rId = makeRoomId(ME.id, sig.from_id);
-        callRoomId = rId;
-
-        // Tunggu offer dari caller
+        // Tunggu offer dari caller via channel terpisah
         const tempCh = sb.channel('wait-offer-'+rId)
-          .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals',filter:`room_id=eq.${rId}`},
+          .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals'},
             p => {
-              if(p.new.type === 'offer' && p.new.from_id !== ME.id){
+              if(p.new.room_id !== rId) return;
+              if(p.new.type==='offer' && p.new.from_id!==ME.id){
                 _incomingOffer = p.new.payload;
                 sb.removeChannel(tempCh);
               }
@@ -3762,18 +3763,15 @@ function subscribeIncomingCalls(){
           .subscribe();
 
         // Tampilkan notif incoming call
-        document.getElementById('ic-name').innerText   = sig.payload.callerName || 'Pengguna';
-        document.getElementById('ic-avatar').src        = sig.payload.callerAvatar || avatarUrl(sig.payload.callerName||'?');
+        document.getElementById('ic-name').innerText = sig.payload?.callerName || 'Pengguna';
+        document.getElementById('ic-avatar').src      = sig.payload?.callerAvatar || avatarUrl(sig.payload?.callerName||'?');
         document.getElementById('incoming-call').classList.add('show');
 
-        // Auto reject setelah 30 detik kalau tidak diangkat
+        // Auto reject 30 detik
         setTimeout(()=>{
-          if(document.getElementById('incoming-call').classList.contains('show')){
-            rejectCall();
-          }
+          if(document.getElementById('incoming-call').classList.contains('show')) rejectCall();
         }, 30000);
 
-        // Ringtone (menggunakan Web Audio API)
         playRingtone();
       })
     .subscribe();
