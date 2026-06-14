@@ -873,39 +873,68 @@ let _confirmCallback = null;
 // ══════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════
+let _adminAuthReady = false;
+
 sb.auth.onAuthStateChange(async (event, session) => {
-  if (session?.user) {
+  // Skip INITIAL_SESSION — kita handle manual di bawah
+  if (event === 'INITIAL_SESSION') return;
+
+  if (event === 'SIGNED_IN' && session?.user) {
     ME = session.user;
     await loadAdminProfile();
-  } else if (event === 'SIGNED_OUT') {
+  } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
     showLogin();
   }
 });
 
+// Cek session saat halaman dibuka
 (async () => {
   const { data: { session } } = await sb.auth.getSession();
-  if (!session) { showLogin(); return; }
+  // Kalau ada session tersimpan → cek role dulu, baru masuk
+  // Kalau tidak ada → langsung tampilkan login
+  if (!session?.user) {
+    showLogin();
+    return;
+  }
   ME = session.user;
   await loadAdminProfile();
 })();
 
 async function loadAdminProfile() {
-  const { data } = await sb.from('users').select('*').eq('id', ME.id).single();
-  if (!data || !['owner','admin'].includes(data.role)) {
-    await sb.auth.signOut();
+  try {
+    const { data, error } = await sb.from('users').select('*').eq('id', ME.id).single();
+
+    if (error || !data) {
+      // User tidak ada di tabel — bukan admin
+      await sb.auth.signOut();
+      showLogin();
+      showError('Akun tidak ditemukan. Daftar dulu di app chat.');
+      return;
+    }
+
+    if (!['owner','admin'].includes(data.role)) {
+      await sb.auth.signOut();
+      showLogin();
+      showError('❌ Akses ditolak. Hanya owner dan admin yang bisa masuk.');
+      return;
+    }
+
+    MY_PROFILE = data;
+    document.getElementById('admin-avatar').src = data.avatar_url ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(data.username)}&background=1e3a5f&color=60a5fa&bold=true`;
+    document.getElementById('admin-username').innerText = '@' + data.username;
+    const roleEl = document.getElementById('admin-role-text');
+    roleEl.innerText   = data.role === 'owner' ? '👑 Owner' : '🛡️ Admin';
+    roleEl.className   = 'admin-info-role ' + data.role;
+    document.getElementById('dash-greeting').innerText = `Halo, ${data.username}! Semua aman ✅`;
+    showApp();
+    initAdmin();
+
+  } catch(e) {
+    console.error('loadAdminProfile error:', e);
     showLogin();
-    showError('Akses ditolak. Hanya owner dan admin yang bisa masuk.');
-    return;
+    showError('Gagal verifikasi akun: ' + e.message);
   }
-  MY_PROFILE = data;
-  document.getElementById('admin-avatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(data.username)}&background=1e3a5f&color=60a5fa&bold=true`;
-  document.getElementById('admin-username').innerText = '@' + data.username;
-  const roleEl = document.getElementById('admin-role-text');
-  roleEl.innerText = data.role === 'owner' ? '👑 Owner' : '🛡️ Admin';
-  roleEl.className = 'admin-info-role ' + data.role;
-  document.getElementById('dash-greeting').innerText = `Halo, ${data.username}! Semua aman ✅`;
-  showApp();
-  initAdmin();
 }
 
 async function doLogin() {
