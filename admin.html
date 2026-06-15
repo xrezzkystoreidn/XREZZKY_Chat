@@ -1597,30 +1597,41 @@ async function loadStoragePage(){
     const [
       {count:totalMsgs},  {count:totalUsers},
       {count:totalConvos},{count:mediaMsgs},
-      {count:tempMsgs},   {count:totalGroups},
-      {count:totalReports},{count:totalBans},
+      {count:tempMsgs},   {count:totalReports},{count:totalBans},
     ] = await Promise.all([
       sb.from('messages').select('*',{count:'exact',head:true}),
       sb.from('users').select('*',{count:'exact',head:true}),
       sb.from('conversations').select('*',{count:'exact',head:true}),
       sb.from('messages').select('*',{count:'exact',head:true}).not('media_url','is',null).is('deleted_at',null),
       sb.from('messages').select('*',{count:'exact',head:true}).not('media_expires_at','is',null).is('deleted_at',null),
-      sb.from('groups').select('*',{count:'exact',head:true}).catch(()=>({count:0})),
       sb.from('reports').select('*',{count:'exact',head:true}).eq('status','pending'),
       sb.from('bans').select('*',{count:'exact',head:true}),
     ]);
 
+    // Groups query terpisah karena tabel mungkin belum ada
+    let totalGroups = 0;
+    try {
+      const {count} = await sb.from('groups').select('*',{count:'exact',head:true});
+      totalGroups = count || 0;
+    } catch(e) { totalGroups = 0; }
+
     // ── CLOUDINARY USAGE ──
     let cloud = null, cloudError = null;
     try {
-      const ts  = Math.round(Date.now()/1000);
-      const raw = `timestamp=${ts}${CLOUDINARY_SECRET}`;
-      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(raw));
-      const sig = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-      const fd  = new FormData();
-      fd.append('timestamp',ts); fd.append('api_key',CLOUDINARY_KEY); fd.append('signature',sig);
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/usage`,{method:'POST',body:fd});
-      if(res.ok) cloud = await res.json(); else cloudError = `HTTP ${res.status}`;
+      // Cloudinary usage API: GET dengan Basic Auth (api_key:api_secret)
+      const credentials = btoa(`${CLOUDINARY_KEY}:${CLOUDINARY_SECRET}`);
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/usage`,
+        {
+          method: 'GET',
+          headers: { 'Authorization': `Basic ${credentials}` }
+        }
+      );
+      if(res.ok) cloud = await res.json();
+      else {
+        const errText = await res.text();
+        cloudError = `HTTP ${res.status}: ${errText.slice(0,100)}`;
+      }
     } catch(e){ cloudError = e.message; }
 
     // ── PARSE DATA ──
