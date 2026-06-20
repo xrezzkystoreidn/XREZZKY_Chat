@@ -3528,14 +3528,10 @@ function subscribeCallSignals(roomId){
 
 // ── SUBSCRIBE INCOMING CALLS (global, saat app init) ──
 function subscribeIncomingCalls(){
-  // Supabase realtime postgres_changes tidak support filter by UUID column
-  // Subscribe ke semua INSERT di call_signals, filter manual di JS
   const ch = sb.channel('incoming-calls-'+ME.id)
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals'},
       async payload => {
         const sig = payload.new;
-
-        // Filter manual — hanya proses kalau ditujukan ke kita
         if(sig.to_id !== ME.id) return;
         if(sig.type !== 'call') return;
 
@@ -3548,7 +3544,7 @@ function subscribeIncomingCalls(){
         const rId     = makeRoomId(ME.id, sig.from_id);
         callRoomId    = rId;
 
-        // Tunggu offer dari caller via channel terpisah
+        // Tunggu offer
         const tempCh = sb.channel('wait-offer-'+rId)
           .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals'},
             p => {
@@ -3560,17 +3556,47 @@ function subscribeIncomingCalls(){
             })
           .subscribe();
 
-        // Tampilkan notif incoming call
-        document.getElementById('ic-name').innerText = sig.payload?.callerName || 'Pengguna';
-        document.getElementById('ic-avatar').src      = sig.payload?.callerAvatar || avatarUrl(sig.payload?.callerName||'?');
+        const callerName   = sig.payload?.callerName || 'Seseorang';
+        const callerAvatar = sig.payload?.callerAvatar || avatarUrl(callerName);
+
+        // Tampilkan UI incoming call
+        document.getElementById('ic-name').innerText = callerName;
+        document.getElementById('ic-avatar').src      = callerAvatar;
         document.getElementById('incoming-call').classList.add('show');
+
+        // Ringtone
+        playRingtone();
+
+        // Vibrasi HP
+        if(navigator.vibrate) navigator.vibrate([500,300,500,300,500]);
+
+        // Browser notification kalau halaman di background
+        if(document.hidden && Notification.permission === 'granted'){
+          const n = new Notification(`📞 ${callerName} memanggil...`, {
+            body:    'Ketuk untuk menjawab',
+            icon:    callerAvatar,
+            badge:   '/icon-192.png',
+            vibrate: [500,300,500],
+            tag:     'incoming-call',
+            renotify: true,
+            requireInteraction: true // notif tidak hilang sampai user interaksi
+          });
+          n.onclick = ()=>{
+            window.focus();
+            n.close();
+          };
+        }
+
+        // Update title tab
+        updateTabTitle(`📞 ${callerName}`);
 
         // Auto reject 30 detik
         setTimeout(()=>{
-          if(document.getElementById('incoming-call').classList.contains('show')) rejectCall();
+          if(document.getElementById('incoming-call').classList.contains('show')){
+            stopRingtone();
+            rejectCall();
+          }
         }, 30000);
-
-        playRingtone();
       })
     .subscribe();
 }
