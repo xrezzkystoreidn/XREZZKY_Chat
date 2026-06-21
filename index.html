@@ -3559,46 +3559,118 @@ function subscribeIncomingCalls(){
         const callerName   = sig.payload?.callerName || 'Seseorang';
         const callerAvatar = sig.payload?.callerAvatar || avatarUrl(callerName);
 
-        // Tampilkan UI incoming call
+        // 1. Tampilkan UI incoming call
         document.getElementById('ic-name').innerText = callerName;
         document.getElementById('ic-avatar').src      = callerAvatar;
         document.getElementById('incoming-call').classList.add('show');
 
-        // Ringtone
+        // 2. Ringtone loop
         playRingtone();
 
-        // Vibrasi HP
-        if(navigator.vibrate) navigator.vibrate([500,300,500,300,500]);
-
-        // Browser notification kalau halaman di background
-        if(document.hidden && Notification.permission === 'granted'){
-          const n = new Notification(`📞 ${callerName} memanggil...`, {
-            body:    'Ketuk untuk menjawab',
-            icon:    callerAvatar,
-            badge:   '/icon-192.png',
-            vibrate: [500,300,500],
-            tag:     'incoming-call',
-            renotify: true,
-            requireInteraction: true // notif tidak hilang sampai user interaksi
-          });
-          n.onclick = ()=>{
-            window.focus();
-            n.close();
-          };
+        // 3. Vibrasi HP pola WA (jalan terus tiap 2 detik)
+        let vibrateLoop = null;
+        if(navigator.vibrate){
+          navigator.vibrate([400,200,400,200,400]);
+          vibrateLoop = setInterval(()=>{
+            if(document.getElementById('incoming-call').classList.contains('show')){
+              navigator.vibrate([400,200,400,200,400]);
+            } else {
+              clearInterval(vibrateLoop);
+            }
+          }, 2500);
         }
 
-        // Update title tab
+        // 4. Browser notification (minta permission kalau belum)
+        const sendBrowserNotif = ()=>{
+          if(Notification.permission === 'granted'){
+            // Tutup notif lama kalau ada
+            if(window._callNotif) window._callNotif.close();
+            window._callNotif = new Notification(`📞 ${callerName} memanggil...`, {
+              body:    'Ketuk untuk menjawab panggilan',
+              icon:    callerAvatar,
+              badge:   callerAvatar,
+              tag:     'incoming-call',
+              renotify: true,
+              requireInteraction: true,
+              silent:  false
+            });
+            window._callNotif.onclick = ()=>{
+              window.focus();
+              window._callNotif?.close();
+            };
+          }
+        };
+
+        if(Notification.permission === 'default'){
+          Notification.requestPermission().then(p=>{ if(p==='granted') sendBrowserNotif(); });
+        } else {
+          sendBrowserNotif();
+        }
+
+        // 5. Update title tab berkedip
         updateTabTitle(`📞 ${callerName}`);
 
-        // Auto reject 30 detik
+        // 6. Auto reject 30 detik
         setTimeout(()=>{
           if(document.getElementById('incoming-call').classList.contains('show')){
+            clearInterval(vibrateLoop);
+            if(navigator.vibrate) navigator.vibrate(0);
+            if(window._callNotif) window._callNotif.close();
             stopRingtone();
             rejectCall();
           }
         }, 30000);
       })
     .subscribe();
+}
+
+// Override rejectCall dan acceptCall untuk stop vibrasi & notif
+const _origRejectCall = rejectCall;
+async function rejectCall(){
+  if(navigator.vibrate) navigator.vibrate(0); // stop vibrasi
+  if(window._callNotif){ window._callNotif.close(); window._callNotif = null; }
+  stopRingtone();
+  document.getElementById('incoming-call').classList.remove('show');
+  if(_incomingFrom){
+    await sendSignal('reject',{},_incomingFrom);
+    _incomingFrom=null; _incomingOffer=null;
+  }
+}
+
+const _origAcceptCall = acceptCall;
+async function acceptCall(){
+  if(navigator.vibrate) navigator.vibrate(0);
+  if(window._callNotif){ window._callNotif.close(); window._callNotif = null; }
+  stopRingtone();
+  document.getElementById('incoming-call').classList.remove('show');
+  if(!_incomingOffer||!_incomingFrom) return;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+  } catch(e){ showToast('❌ Tidak bisa akses mikrofon: '+e.message); return; }
+  callPartnerId=_incomingFrom;
+  callRoomId=makeRoomId(ME.id,callPartnerId);
+  isCallActive=true;
+  const pName=document.getElementById('ic-name').innerText;
+  showCallOverlay(pName,document.getElementById('ic-avatar').src,'Menyambungkan...');
+  pc=new RTCPeerConnection(STUN_SERVERS);
+  localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+  pc.ontrack=e=>{ document.getElementById('remote-audio').srcObject=e.streams[0]; };
+  pc.onicecandidate=async e=>{ if(e.candidate) await sendSignal('ice',{candidate:e.candidate},callPartnerId); };
+  pc.onconnectionstatechange=()=>{
+    if(pc?.connectionState==='connected'){
+      document.getElementById('call-status').style.display='none';
+      document.getElementById('call-timer').style.display='block';
+      startCallTimer();
+    }
+    if(['disconnected','failed','closed'].includes(pc?.connectionState)) endCall();
+  };
+  await pc.setRemoteDescription(new RTCSessionDescription(_incomingOffer.sdp));
+  const answer=await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await sendSignal('answer',{sdp:answer},callPartnerId);
+  subscribeCallSignals(callRoomId);
+  await sendSignal('accept',{},callPartnerId);
+  _incomingOffer=null; _incomingFrom=null;
 }
 
 // ── RINGTONE ──────────────────────
