@@ -430,28 +430,58 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(-
 .call-btn.mute.active{background:rgba(239,68,68,.2);border-color:rgba(239,68,68,.4);color:var(--red)}
 .call-btn.speaker{background:var(--surface2);border:1px solid var(--border2)}
 
-/* Incoming call popup */
+/* ═══ INCOMING CALL — FULLSCREEN ═══ */
 #incoming-call{
-  position:fixed;top:50%;left:50%;
-  transform:translate(-50%,-50%);
-  width:calc(100% - 48px);max-width:320px;
-  background:linear-gradient(145deg,#0e1629,#0a0f1e);
-  border:1px solid rgba(34,197,94,0.3);
-  border-radius:24px;
-  box-shadow:0 20px 60px rgba(0,0,0,.8),0 0 0 1px rgba(34,197,94,0.1);
-  z-index:590;display:none;
-  animation:popIn .3s cubic-bezier(.175,.885,.32,1.275);
+  position:fixed;inset:0;
+  background:linear-gradient(180deg,#071633 0%,#050e1f 100%);
+  z-index:900;display:none;
+  flex-direction:column;align-items:center;
+  justify-content:space-between;
+  padding:calc(var(--safe-top)+60px) 24px calc(var(--safe-bot)+48px);
 }
-@keyframes popIn{from{transform:translate(-50%,-50%) scale(0.8);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
-#incoming-call.show{display:block}
+#incoming-call.show{display:flex}
 
-/* Backdrop blur saat ada call */
-#incoming-call.show::before{
-  content:'';position:fixed;inset:0;
-  background:rgba(0,0,0,0.7);
-  backdrop-filter:blur(4px);
-  z-index:-1;border-radius:0;
+/* ═══ CALL OVERLAY — FULLSCREEN ═══ */
+#call-overlay{
+  position:fixed;inset:0;
+  background:linear-gradient(180deg,#071633 0%,#050e1f 100%);
+  z-index:600;display:none;
+  flex-direction:column;align-items:center;
+  justify-content:space-between;
+  padding:calc(var(--safe-top)+60px) 24px calc(var(--safe-bot)+48px);
 }
+#call-overlay.active{display:flex}
+.call-avatar{
+  width:120px;height:120px;border-radius:50%;
+  border:3px solid rgba(34,197,94,0.5);
+  object-fit:cover;
+}
+.call-avatar.ringing{animation:callPulse 1.5s infinite;}
+@keyframes callPulse{
+  0%{box-shadow:0 0 0 0 rgba(34,197,94,0.5)}
+  70%{box-shadow:0 0 0 30px rgba(34,197,94,0)}
+  100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}
+}
+.call-name{font-size:28px;font-weight:900;color:#f1f5f9;text-align:center}
+.call-status{font-size:14px;color:#64748b;text-align:center;margin-top:6px}
+.call-timer{font-size:22px;font-weight:700;color:#22c55e;font-variant-numeric:tabular-nums;text-align:center;margin-top:6px}
+.call-actions{display:flex;justify-content:center;gap:40px;width:100%}
+.call-btn{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:none;border:none;cursor:pointer;
+}
+.call-btn-circle{
+  width:68px;height:68px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:26px;transition:.15s;
+}
+.call-btn-circle:active{transform:scale(0.9)}
+.call-btn.end .call-btn-circle{background:#ef4444;box-shadow:0 6px 20px rgba(239,68,68,.5)}
+.call-btn.accept .call-btn-circle{background:#22c55e;box-shadow:0 6px 20px rgba(34,197,94,.5)}
+.call-btn.mute .call-btn-circle{background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.15)}
+.call-btn.mute.active .call-btn-circle{background:rgba(239,68,68,.2);border-color:rgba(239,68,68,.4)}
+.call-btn.speaker .call-btn-circle{background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.15)}
+.call-btn-label{font-size:12px;color:#94a3b8;font-weight:600}
 .group-card{display:flex;align-items:center;gap:12px;padding:12px 10px;border-radius:14px;cursor:pointer;transition:.15s;border:1px solid transparent;}
 .group-card:hover{background:var(--surface);border-color:var(--border)}
 .group-card.active{background:rgba(59,130,246,0.12)}
@@ -585,6 +615,9 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(-
         <div class="sidebar-actions">
           <div class="icon-btn" id="admin-panel-btn" onclick="goToAdminPanel()" title="Admin Panel" style="display:none;background:rgba(59,130,246,0.15);border-color:rgba(59,130,246,0.3);">
             <i class="fa fa-shield-halved" style="color:var(--accent);"></i>
+          </div>
+          <div class="icon-btn" onclick="openCallHistory()" title="Riwayat Panggilan">
+            <i class="fa fa-clock-rotate-left" style="font-size:13px;"></i>
           </div>
           <div class="icon-btn" onclick="openNewChat()" title="Chat Baru"><i class="fa fa-pen-to-square"></i></div>
         </div>
@@ -791,51 +824,57 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(-
 </div>
 
 <!-- INCOMING CALL NOTIFICATION -->
-<!-- INCOMING CALL POPUP -->
+<!-- INCOMING CALL — FULLSCREEN -->
 <div id="incoming-call">
-  <div style="display:flex;flex-direction:column;align-items:center;padding:20px 16px 16px;">
-    <!-- Avatar + pulse animation -->
-    <div style="position:relative;margin-bottom:12px;">
-      <img id="ic-avatar" src="" style="width:80px;height:80px;border-radius:50%;border:3px solid #22c55e;box-shadow:0 0 0 0 rgba(34,197,94,0.4);animation:callPulse 1.5s infinite;object-fit:cover;">
-    </div>
-    <!-- Info -->
-    <div style="font-size:12px;color:#94a3b8;margin-bottom:4px;" id="ic-type-label">📞 Panggilan Suara Masuk</div>
-    <div style="font-size:20px;font-weight:900;color:#f1f5f9;margin-bottom:4px;" id="ic-name">Seseorang</div>
-    <div style="font-size:12px;color:#64748b;margin-bottom:20px;">XREZZKY Chat</div>
-    <!-- Actions -->
-    <div style="display:flex;gap:32px;align-items:center;">
-      <!-- Tolak -->
-      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-        <button onclick="rejectCall()" style="width:60px;height:60px;border-radius:50%;background:#ef4444;border:none;cursor:pointer;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(239,68,68,0.5);transition:.15s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform=''">
-          📵
-        </button>
-        <span style="font-size:11px;color:#94a3b8;font-weight:600;">Tolak</span>
-      </div>
-      <!-- Angkat -->
-      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-        <button onclick="acceptCall()" style="width:60px;height:60px;border-radius:50%;background:#22c55e;border:none;cursor:pointer;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(34,197,94,0.5);transition:.15s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform=''">
-          📞
-        </button>
-        <span style="font-size:11px;color:#94a3b8;font-weight:600;">Angkat</span>
-      </div>
-    </div>
+  <!-- Top: info caller -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+    <div style="font-size:13px;color:#64748b;font-weight:600;letter-spacing:.5px;">PANGGILAN MASUK</div>
+    <img id="ic-avatar" src="" style="width:120px;height:120px;border-radius:50%;border:3px solid rgba(34,197,94,0.5);object-fit:cover;box-shadow:0 0 0 0 rgba(34,197,94,0.4);animation:callPulse 1.5s infinite;">
+    <div style="font-size:28px;font-weight:900;color:#f1f5f9;" id="ic-name">Seseorang</div>
+    <div id="ic-type-label" style="font-size:13px;color:#64748b;">🎙️ Panggilan Suara</div>
+  </div>
+
+  <!-- Bottom: tombol -->
+  <div style="display:flex;justify-content:center;gap:56px;width:100%;">
+    <button class="call-btn" onclick="rejectCall()">
+      <div class="call-btn-circle" style="background:#ef4444;box-shadow:0 6px 20px rgba(239,68,68,.5);">📵</div>
+      <span class="call-btn-label">Tolak</span>
+    </button>
+    <button class="call-btn" onclick="acceptCall()">
+      <div class="call-btn-circle" style="background:#22c55e;box-shadow:0 6px 20px rgba(34,197,94,.5);">📞</div>
+      <span class="call-btn-label">Angkat</span>
+    </button>
   </div>
 </div>
 
-<!-- CALL OVERLAY -->
+<!-- CALL OVERLAY — FULLSCREEN -->
 <div id="call-overlay">
-  <img id="call-avatar" class="call-avatar" src="">
-  <div class="call-name" id="call-name"></div>
-  <div class="call-status" id="call-status">Memanggil...</div>
-  <div class="call-timer" id="call-timer" style="display:none;">0:00</div>
+  <!-- Top: info -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+    <img id="call-avatar" class="call-avatar" src="">
+    <div class="call-name" id="call-name"></div>
+    <div class="call-status" id="call-status">Memanggil...</div>
+    <div class="call-timer" id="call-timer" style="display:none;">0:00</div>
+  </div>
+
+  <!-- Bottom: controls -->
   <div class="call-actions">
-    <button class="call-btn mute" id="btn-mute" onclick="toggleMute()" title="Mute">🎤</button>
-    <button class="call-btn end" onclick="endCall()" title="Tutup">📵</button>
-    <button class="call-btn speaker" id="btn-speaker" onclick="toggleSpeaker()" title="Speaker">🔊</button>
+    <button class="call-btn mute" id="btn-mute" onclick="toggleMute()">
+      <div class="call-btn-circle">🎤</div>
+      <span class="call-btn-label">Bisukan</span>
+    </button>
+    <button class="call-btn end" onclick="endCall()">
+      <div class="call-btn-circle">📵</div>
+      <span class="call-btn-label">Tutup</span>
+    </button>
+    <button class="call-btn speaker" id="btn-speaker" onclick="toggleSpeaker()">
+      <div class="call-btn-circle">🔊</div>
+      <span class="call-btn-label">Speaker</span>
+    </button>
   </div>
 </div>
 
-<!-- AUDIO ELEMENT (hidden) -->
+<!-- AUDIO -->
 <audio id="remote-audio" autoplay playsinline></audio>
 
 <!-- CREATE GROUP MODAL -->
@@ -3268,35 +3307,55 @@ function updateTabTitle(from){
   }, {once:true});
 }
 // ════════════════════════════════
+//  VOICE CALL (WebRTC) — v2 stabil + anti-spam + riwayat
+// ════════════════════════════════
 const STUN_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
   ]
 };
 
-let pc           = null;   // RTCPeerConnection
-let localStream  = null;   // MediaStream dari mic
-let callSignalCh = null;   // Supabase realtime channel
-let callRoomId   = null;   // room ID
-let callPartnerId= null;   // partner UUID
-let callTimer    = null;   // interval untuk timer
-let callSeconds  = 0;
-let isMuted      = false;
-let isCallActive = false;
-let _incomingOffer = null; // simpan offer sementara saat ada panggilan masuk
-let _incomingFrom  = null;
+let pc            = null;
+let localStream   = null;
+let callSignalCh  = null;
+let callRoomId    = null;
+let callPartnerId = null;
+let callTimer     = null;
+let callSeconds   = 0;
+let isMuted       = false;
+let isCallActive  = false;
+let _incomingOffer  = null;
+let _incomingFrom   = null;
+let _currentHistoryId = null; // ID row call_history aktif
+let _callConnectTimeout = null; // timeout kalau gagal connect
+let _lastCallAttempt = {};     // anti-spam: {partnerId: timestamp}
+let _vibrateLoop = null;
+let _waitOfferCh = null;
 
-// Buat room ID canonical (sorted UUID)
 function makeRoomId(a, b){ return [a,b].sort().join('_'); }
+
+// ── ANTI-SPAM: cegah spam call ke orang yang sama ──
+function canCallNow(partnerId){
+  const last = _lastCallAttempt[partnerId] || 0;
+  const now  = Date.now();
+  if(now - last < 5000){ // 5 detik cooldown antar percobaan call
+    showToast('⏳ Tunggu sebentar sebelum memanggil lagi.');
+    return false;
+  }
+  _lastCallAttempt[partnerId] = now;
+  return true;
+}
 
 // ── MULAI CALL (Caller) ───────────
 async function startCall(){
   if(!activePartner){ showToast('Buka chat dulu.'); return; }
   if(isCallActive){ showToast('Sudah ada panggilan aktif.'); return; }
+  if(!canCallNow(activePartner.id)) return;
 
-  // Minta izin mikrofon
   try {
     localStream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
   } catch(e) {
@@ -3308,46 +3367,54 @@ async function startCall(){
   callRoomId    = makeRoomId(ME.id, callPartnerId);
   isCallActive  = true;
 
-  // Tampilkan overlay
-  showCallOverlay(activePartner.username, avatarUrl(activePartner.username), 'Memanggil...');
+  showCallOverlay(activePartner.username, MY_PROFILE?.avatar_url ? activePartner.avatar_url||avatarUrl(activePartner.username) : avatarUrl(activePartner.username), 'Memanggil...');
 
-  // Buat peer connection
+  // Catat riwayat call (status awal: missed, diupdate kalau terjawab)
+  try {
+    const {data:hist} = await sb.from('call_history').insert({
+      room_id: callRoomId, caller_id: ME.id, receiver_id: callPartnerId, status:'missed'
+    }).select('id').single();
+    _currentHistoryId = hist?.id || null;
+  } catch(e){ console.warn('call_history insert:', e.message); }
+
   pc = new RTCPeerConnection(STUN_SERVERS);
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
 
-  // Kirim audio remote ke element
-  pc.ontrack = e => {
-    document.getElementById('remote-audio').srcObject = e.streams[0];
-  };
+  pc.ontrack = e => { document.getElementById('remote-audio').srcObject = e.streams[0]; };
 
-  // Kirim ICE candidates ke partner
   pc.onicecandidate = async e => {
-    if(e.candidate){
-      await sendSignal('ice', {candidate: e.candidate}, callPartnerId);
-    }
+    if(e.candidate) await sendSignal('ice', {candidate: e.candidate}, callPartnerId);
   };
 
   pc.onconnectionstatechange = () => {
     if(pc?.connectionState === 'connected'){
+      clearTimeout(_callConnectTimeout);
       document.getElementById('call-status').style.display = 'none';
       document.getElementById('call-timer').style.display = 'block';
+      document.getElementById('call-avatar').classList.remove('ringing');
       startCallTimer();
+      markCallAnswered();
     }
     if(['disconnected','failed','closed'].includes(pc?.connectionState)){
       endCall();
     }
   };
 
-  // Subscribe ke channel signaling
   subscribeCallSignals(callRoomId);
 
-  // Kirim notif "calling" ke partner
+  // Timeout kalau 45 detik tidak terjawab — auto end
+  _callConnectTimeout = setTimeout(()=>{
+    if(isCallActive && document.getElementById('call-timer').style.display === 'none'){
+      showToast('📵 Tidak ada jawaban.');
+      endCall();
+    }
+  }, 45000);
+
   await sendSignal('call', {
     callerName:   MY_PROFILE.username,
     callerAvatar: MY_PROFILE.avatar_url || avatarUrl(MY_PROFILE.username)
   }, callPartnerId);
 
-  // Buat offer
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   await sendSignal('offer', {sdp: offer}, callPartnerId);
@@ -3355,15 +3422,15 @@ async function startCall(){
 
 // ── TERIMA CALL (Callee) ──────────
 async function acceptCall(){
-  stopRingtone();
+  stopRingtoneAndVibrate();
   document.getElementById('incoming-call').classList.remove('show');
-  if(!_incomingOffer || !_incomingFrom) return;
+  if(!_incomingOffer || !_incomingFrom){ showToast('❌ Sesi panggilan tidak valid.'); return; }
 
-  // Minta izin mikrofon
   try {
     localStream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
   } catch(e) {
     showToast('❌ Tidak bisa akses mikrofon: '+e.message);
+    await sendSignal('reject', {reason:'no_mic'}, _incomingFrom);
     return;
   }
 
@@ -3371,43 +3438,33 @@ async function acceptCall(){
   callRoomId    = makeRoomId(ME.id, callPartnerId);
   isCallActive  = true;
 
-  // Tampilkan overlay
   const partnerName = document.getElementById('ic-name').innerText;
   showCallOverlay(partnerName, document.getElementById('ic-avatar').src, 'Menyambungkan...');
 
   pc = new RTCPeerConnection(STUN_SERVERS);
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-  pc.ontrack = e => {
-    document.getElementById('remote-audio').srcObject = e.streams[0];
-  };
-
+  pc.ontrack = e => { document.getElementById('remote-audio').srcObject = e.streams[0]; };
   pc.onicecandidate = async e => {
-    if(e.candidate){
-      await sendSignal('ice', {candidate: e.candidate}, callPartnerId);
-    }
+    if(e.candidate) await sendSignal('ice', {candidate: e.candidate}, callPartnerId);
   };
-
   pc.onconnectionstatechange = () => {
     if(pc?.connectionState === 'connected'){
       document.getElementById('call-status').style.display = 'none';
       document.getElementById('call-timer').style.display = 'block';
+      document.getElementById('call-avatar').classList.remove('ringing');
       startCallTimer();
+      markCallAnswered();
     }
     if(['disconnected','failed','closed'].includes(pc?.connectionState)){
       endCall();
     }
   };
 
-  // Set remote offer
   await pc.setRemoteDescription(new RTCSessionDescription(_incomingOffer.sdp));
-
-  // Buat answer
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   await sendSignal('answer', {sdp: answer}, callPartnerId);
 
-  // Subscribe signals
   subscribeCallSignals(callRoomId);
   await sendSignal('accept', {}, callPartnerId);
 
@@ -3416,12 +3473,38 @@ async function acceptCall(){
 }
 
 async function rejectCall(){
-  stopRingtone();
+  stopRingtoneAndVibrate();
   document.getElementById('incoming-call').classList.remove('show');
   if(_incomingFrom){
     await sendSignal('reject', {}, _incomingFrom);
+    // Update riwayat jadi rejected (dari sisi penerima — cari row terbaru)
+    try {
+      await sb.from('call_history')
+        .update({status:'rejected', ended_at:new Date().toISOString()})
+        .eq('caller_id', _incomingFrom).eq('receiver_id', ME.id)
+        .is('ended_at', null)
+        .order('started_at',{ascending:false}).limit(1);
+    } catch(e){}
     _incomingFrom  = null;
     _incomingOffer = null;
+  }
+  if(_waitOfferCh){ sb.removeChannel(_waitOfferCh); _waitOfferCh = null; }
+}
+
+// ── MARK ANSWERED di riwayat ──────
+async function markCallAnswered(){
+  if(_currentHistoryId){
+    try {
+      await sb.from('call_history').update({status:'answered'}).eq('id', _currentHistoryId);
+    } catch(e){}
+  } else if(callRoomId){
+    // Sisi penerima — update row terbaru yang masih missing
+    try {
+      await sb.from('call_history')
+        .update({status:'answered'})
+        .eq('room_id', callRoomId)
+        .order('started_at',{ascending:false}).limit(1);
+    } catch(e){}
   }
 }
 
@@ -3429,44 +3512,59 @@ async function rejectCall(){
 async function endCall(){
   if(callPartnerId) await sendSignal('end', {}, callPartnerId).catch(()=>{});
 
-  // Cleanup
+  // Update riwayat — durasi & waktu akhir
+  if(_currentHistoryId){
+    try {
+      await sb.from('call_history').update({
+        duration: callSeconds,
+        ended_at: new Date().toISOString()
+      }).eq('id', _currentHistoryId);
+    } catch(e){}
+  } else if(callRoomId){
+    try {
+      await sb.from('call_history')
+        .update({duration: callSeconds, ended_at: new Date().toISOString()})
+        .eq('room_id', callRoomId)
+        .order('started_at',{ascending:false}).limit(1);
+    } catch(e){}
+  }
+
+  clearTimeout(_callConnectTimeout);
+
   if(pc){ pc.close(); pc = null; }
   if(localStream){ localStream.getTracks().forEach(t=>t.stop()); localStream = null; }
   if(callSignalCh){ sb.removeChannel(callSignalCh); callSignalCh = null; }
+  if(_waitOfferCh){ sb.removeChannel(_waitOfferCh); _waitOfferCh = null; }
   clearInterval(callTimer); callTimer = null; callSeconds = 0;
 
   document.getElementById('remote-audio').srcObject = null;
   document.getElementById('call-overlay').classList.remove('active');
   document.getElementById('incoming-call').classList.remove('show');
+  document.getElementById('call-avatar').classList.add('ringing');
 
   isCallActive  = false;
   callRoomId    = null;
   callPartnerId = null;
   isMuted       = false;
+  _currentHistoryId = null;
 }
 
-// ── TOGGLE MUTE ───────────────────
 function toggleMute(){
   if(!localStream) return;
   isMuted = !isMuted;
   localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
   const btn = document.getElementById('btn-mute');
-  btn.innerHTML = isMuted ? '🔇' : '🎤';
+  btn.querySelector('.call-btn-circle').innerText = isMuted ? '🔇' : '🎤';
   btn.classList.toggle('active', isMuted);
-  showToast(isMuted ? '🔇 Mikrofon dimatikan' : '🎤 Mikrofon aktif');
 }
 
-// ── TOGGLE SPEAKER ────────────────
 function toggleSpeaker(){
   const audio = document.getElementById('remote-audio');
-  // Di mobile, toggle mute audio remote
   audio.muted = !audio.muted;
   const btn = document.getElementById('btn-speaker');
-  btn.innerHTML = audio.muted ? '🔇' : '🔊';
-  showToast(audio.muted ? '🔇 Speaker dimatikan' : '🔊 Speaker aktif');
+  btn.querySelector('.call-btn-circle').innerText = audio.muted ? '🔇' : '🔊';
 }
 
-// ── TIMER ─────────────────────────
 function startCallTimer(){
   callSeconds = 0;
   clearInterval(callTimer);
@@ -3478,7 +3576,6 @@ function startCallTimer(){
   }, 1000);
 }
 
-// ── SHOW CALL OVERLAY ─────────────
 function showCallOverlay(name, avatar, status){
   document.getElementById('call-avatar').src     = avatar;
   document.getElementById('call-avatar').className = 'call-avatar ringing';
@@ -3489,15 +3586,13 @@ function showCallOverlay(name, avatar, status){
   document.getElementById('call-overlay').classList.add('active');
 }
 
-// ── SIGNALING ─────────────────────
 async function sendSignal(type, payload, toId){
-  await sb.from('call_signals').insert({
-    room_id:    callRoomId || makeRoomId(ME.id, toId),
-    from_id:    ME.id,
-    to_id:      toId,
-    type,
-    payload
-  });
+  try {
+    await sb.from('call_signals').insert({
+      room_id: callRoomId || makeRoomId(ME.id, toId),
+      from_id: ME.id, to_id: toId, type, payload
+    });
+  } catch(e){ console.warn('sendSignal error:', e.message); }
 }
 
 function subscribeCallSignals(roomId){
@@ -3506,7 +3601,6 @@ function subscribeCallSignals(roomId){
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals'},
       async payload => {
         const sig = payload.new;
-        // Filter: hanya signal untuk room ini dan bukan dari kita sendiri
         if(sig.room_id !== roomId) return;
         if(sig.from_id === ME.id) return;
 
@@ -3515,7 +3609,6 @@ function subscribeCallSignals(roomId){
             if(pc && pc.signalingState !== 'stable'){
               await pc.setRemoteDescription(new RTCSessionDescription(sig.payload.sdp));
               document.getElementById('call-status').innerText = 'Tersambung';
-              document.getElementById('call-avatar').className = 'call-avatar';
             }
             break;
           case 'ice':
@@ -3525,7 +3618,6 @@ function subscribeCallSignals(roomId){
             break;
           case 'accept':
             document.getElementById('call-status').innerText = 'Tersambung';
-            document.getElementById('call-avatar').className = 'call-avatar';
             break;
           case 'reject':
             showToast('❌ Panggilan ditolak.');
@@ -3540,9 +3632,8 @@ function subscribeCallSignals(roomId){
     .subscribe();
 }
 
-// ── SUBSCRIBE INCOMING CALLS (global, saat app init) ──
 function subscribeIncomingCalls(){
-  const ch = sb.channel('incoming-calls-'+ME.id)
+  sb.channel('incoming-calls-'+ME.id)
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals'},
       async payload => {
         const sig = payload.new;
@@ -3558,14 +3649,14 @@ function subscribeIncomingCalls(){
         const rId     = makeRoomId(ME.id, sig.from_id);
         callRoomId    = rId;
 
-        // Tunggu offer
-        const tempCh = sb.channel('wait-offer-'+rId)
+        if(_waitOfferCh) sb.removeChannel(_waitOfferCh);
+        _waitOfferCh = sb.channel('wait-offer-'+rId)
           .on('postgres_changes',{event:'INSERT',schema:'public',table:'call_signals'},
             p => {
               if(p.new.room_id !== rId) return;
               if(p.new.type==='offer' && p.new.from_id!==ME.id){
                 _incomingOffer = p.new.payload;
-                sb.removeChannel(tempCh);
+                sb.removeChannel(_waitOfferCh); _waitOfferCh = null;
               }
             })
           .subscribe();
@@ -3573,64 +3664,33 @@ function subscribeIncomingCalls(){
         const callerName   = sig.payload?.callerName || 'Seseorang';
         const callerAvatar = sig.payload?.callerAvatar || avatarUrl(callerName);
 
-        // 1. Tampilkan UI incoming call
         document.getElementById('ic-name').innerText = callerName;
         document.getElementById('ic-avatar').src      = callerAvatar;
         document.getElementById('incoming-call').classList.add('show');
 
-        // 2. Ringtone loop
         playRingtone();
-
-        // 3. Vibrasi HP pola WA (jalan terus tiap 2 detik)
-        let vibrateLoop = null;
         if(navigator.vibrate){
           navigator.vibrate([400,200,400,200,400]);
-          vibrateLoop = setInterval(()=>{
+          _vibrateLoop = setInterval(()=>{
             if(document.getElementById('incoming-call').classList.contains('show')){
               navigator.vibrate([400,200,400,200,400]);
-            } else {
-              clearInterval(vibrateLoop);
-            }
+            } else clearInterval(_vibrateLoop);
           }, 2500);
         }
 
-        // 4. Browser notification (minta permission kalau belum)
-        const sendBrowserNotif = ()=>{
-          if(Notification.permission === 'granted'){
-            // Tutup notif lama kalau ada
-            if(window._callNotif) window._callNotif.close();
-            window._callNotif = new Notification(`📞 ${callerName} memanggil...`, {
-              body:    'Ketuk untuk menjawab panggilan',
-              icon:    callerAvatar,
-              badge:   callerAvatar,
-              tag:     'incoming-call',
-              renotify: true,
-              requireInteraction: true,
-              silent:  false
-            });
-            window._callNotif.onclick = ()=>{
-              window.focus();
-              window._callNotif?.close();
-            };
-          }
-        };
-
-        if(Notification.permission === 'default'){
-          Notification.requestPermission().then(p=>{ if(p==='granted') sendBrowserNotif(); });
-        } else {
-          sendBrowserNotif();
+        if(Notification.permission === 'granted'){
+          if(window._callNotif) window._callNotif.close();
+          window._callNotif = new Notification(`📞 ${callerName} memanggil...`, {
+            body: 'Ketuk untuk menjawab', icon: callerAvatar,
+            tag: 'incoming-call', renotify: true, requireInteraction: true
+          });
+          window._callNotif.onclick = ()=>{ window.focus(); window._callNotif?.close(); };
         }
 
-        // 5. Update title tab berkedip
         updateTabTitle(`📞 ${callerName}`);
 
-        // 6. Auto reject 30 detik
         setTimeout(()=>{
           if(document.getElementById('incoming-call').classList.contains('show')){
-            clearInterval(vibrateLoop);
-            if(navigator.vibrate) navigator.vibrate(0);
-            if(window._callNotif) window._callNotif.close();
-            stopRingtone();
             rejectCall();
           }
         }, 30000);
@@ -3638,85 +3698,104 @@ function subscribeIncomingCalls(){
     .subscribe();
 }
 
-// Override rejectCall dan acceptCall untuk stop vibrasi & notif
-const _origRejectCall = rejectCall;
-async function rejectCall(){
-  if(navigator.vibrate) navigator.vibrate(0); // stop vibrasi
-  if(window._callNotif){ window._callNotif.close(); window._callNotif = null; }
+function stopRingtoneAndVibrate(){
   stopRingtone();
-  document.getElementById('incoming-call').classList.remove('show');
-  if(_incomingFrom){
-    await sendSignal('reject',{},_incomingFrom);
-    _incomingFrom=null; _incomingOffer=null;
-  }
-}
-
-const _origAcceptCall = acceptCall;
-async function acceptCall(){
   if(navigator.vibrate) navigator.vibrate(0);
+  clearInterval(_vibrateLoop);
   if(window._callNotif){ window._callNotif.close(); window._callNotif = null; }
-  stopRingtone();
-  document.getElementById('incoming-call').classList.remove('show');
-  if(!_incomingOffer||!_incomingFrom) return;
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-  } catch(e){ showToast('❌ Tidak bisa akses mikrofon: '+e.message); return; }
-  callPartnerId=_incomingFrom;
-  callRoomId=makeRoomId(ME.id,callPartnerId);
-  isCallActive=true;
-  const pName=document.getElementById('ic-name').innerText;
-  showCallOverlay(pName,document.getElementById('ic-avatar').src,'Menyambungkan...');
-  pc=new RTCPeerConnection(STUN_SERVERS);
-  localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-  pc.ontrack=e=>{ document.getElementById('remote-audio').srcObject=e.streams[0]; };
-  pc.onicecandidate=async e=>{ if(e.candidate) await sendSignal('ice',{candidate:e.candidate},callPartnerId); };
-  pc.onconnectionstatechange=()=>{
-    if(pc?.connectionState==='connected'){
-      document.getElementById('call-status').style.display='none';
-      document.getElementById('call-timer').style.display='block';
-      startCallTimer();
-    }
-    if(['disconnected','failed','closed'].includes(pc?.connectionState)) endCall();
-  };
-  await pc.setRemoteDescription(new RTCSessionDescription(_incomingOffer.sdp));
-  const answer=await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  await sendSignal('answer',{sdp:answer},callPartnerId);
-  subscribeCallSignals(callRoomId);
-  await sendSignal('accept',{},callPartnerId);
-  _incomingOffer=null; _incomingFrom=null;
 }
 
-// ── RINGTONE ──────────────────────
 let _ringtoneCtx = null;
-let _ringtoneOscillators = [];
+let _ringtoneInterval = null;
 
 function playRingtone(){
+  stopRingtone();
   try {
     _ringtoneCtx = new (window.AudioContext||window.webkitAudioContext)();
-    const pattern = [800, 1000]; // frekuensi nada
-    let t = _ringtoneCtx.currentTime;
-
-    for(let i=0; i<6; i++){
-      const osc  = _ringtoneCtx.createOscillator();
-      const gain = _ringtoneCtx.createGain();
-      osc.connect(gain); gain.connect(_ringtoneCtx.destination);
-      osc.type = 'sine';
-      osc.frequency.value = pattern[i%2];
-      gain.gain.setValueAtTime(0.3, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t+0.4);
-      osc.start(t); osc.stop(t+0.4);
-      t += 0.5;
-      _ringtoneOscillators.push(osc);
-    }
-  } catch(e) { console.warn('ringtone error:', e); }
+    const playTone = ()=>{
+      if(!_ringtoneCtx) return;
+      const pattern = [800, 1000];
+      let t = _ringtoneCtx.currentTime;
+      for(let i=0;i<4;i++){
+        const osc=_ringtoneCtx.createOscillator(), gain=_ringtoneCtx.createGain();
+        osc.connect(gain); gain.connect(_ringtoneCtx.destination);
+        osc.type='sine'; osc.frequency.value=pattern[i%2];
+        gain.gain.setValueAtTime(0.25,t);
+        gain.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+        osc.start(t); osc.stop(t+0.35);
+        t+=0.45;
+      }
+    };
+    playTone();
+    _ringtoneInterval = setInterval(playTone, 2500);
+  } catch(e){ console.warn('ringtone:', e); }
 }
 
 function stopRingtone(){
   try { if(_ringtoneCtx) _ringtoneCtx.close(); } catch(e){}
   _ringtoneCtx = null;
-  _ringtoneOscillators = [];
+  clearInterval(_ringtoneInterval);
 }
+
+// ── RIWAYAT TELEPON ───────────────
+async function loadCallHistory(){
+  const {data} = await sb.from('call_history')
+    .select('*, caller:caller_id(username,avatar_url), receiver:receiver_id(username,avatar_url)')
+    .or(`caller_id.eq.${ME.id},receiver_id.eq.${ME.id}`)
+    .order('started_at',{ascending:false})
+    .limit(50);
+  return data || [];
+}
+
+function fmtCallDuration(sec){
+  if(!sec) return '';
+  const m = Math.floor(sec/60), s = sec%60;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+async function openCallHistory(){
+  const list = await loadCallHistory();
+  let html = `<div style="padding:16px 18px 8px;font-size:16px;font-weight:900;">📞 Riwayat Panggilan</div>`;
+
+  if(!list.length){
+    html += `<div style="padding:40px 20px;text-align:center;color:var(--text3);"><i class="fa fa-phone-slash" style="font-size:28px;opacity:.4;display:block;margin-bottom:8px;"></i>Belum ada riwayat panggilan</div>`;
+  } else {
+    html += list.map(c=>{
+      const isOutgoing = c.caller_id === ME.id;
+      const other = isOutgoing ? c.receiver : c.caller;
+      const icon  = c.status==='answered' ? (isOutgoing?'↗️':'↙️') : c.status==='missed'?'❌': c.status==='rejected'?'🚫':'⏳';
+      const color = c.status==='answered' ? 'var(--green)' : c.status==='missed'?'var(--red)':'var(--text3)';
+      const statusLabel = {answered:isOutgoing?'Terhubung':'Masuk', missed:'Tak terjawab', rejected:'Ditolak', busy:'Sibuk'}[c.status]||c.status;
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border);">
+        <img src="${other?.avatar_url||avatarUrl(other?.username||'?')}" style="width:42px;height:42px;border-radius:50%;flex-shrink:0;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;">@${esc(other?.username||'?')}</div>
+          <div style="font-size:11px;color:${color};">${icon} ${statusLabel} ${c.duration?'· '+fmtCallDuration(c.duration):''}</div>
+        </div>
+        <div style="font-size:10px;color:var(--text3);flex-shrink:0;">${fmtTime(c.started_at)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  showBottomSheetGeneric(html);
+}
+
+// Generic bottom sheet helper (reuse existing modal infra)
+function showBottomSheetGeneric(html){
+  let modal = document.getElementById('generic-sheet');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'generic-sheet';
+    modal.className = 'modal-overlay';
+    modal.onclick = (e)=>{ if(e.target===modal) modal.classList.remove('open'); };
+    modal.innerHTML = `<div class="bottom-sheet" style="max-height:80dvh;overflow-y:auto;"><div class="sheet-handle"></div><div id="generic-sheet-body"></div></div>`;
+    document.body.appendChild(modal);
+  }
+  document.getElementById('generic-sheet-body').innerHTML = html;
+  modal.classList.add('open');
+}
+
+
 let allGroups = [];
 let activeGroupId = null;
 let groupMsgCh = null;
